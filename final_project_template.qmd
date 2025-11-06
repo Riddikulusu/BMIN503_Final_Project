@@ -14,17 +14,53 @@ Use this template to complete your project throughout the course. Your Final Pro
 
 ## Overview {#sec-overview}
 
-Give a brief a description of your project and its goal(s), what data you are using to complete it, and what two faculty/staff in different fields you have spoken to about your project with a brief summary of what you learned from each person. Include a link to your final project GitHub repository.
+Healthcare access is a critical determinant of population health, yet spatial disparities can contribute to uneven health outcomes. This project investigates spatial disparities in healthcare access and their potential impact on mortality rates across Philadelphia districts. The main goal is to examine whether the distribution and accessibility of hospitals are associated with district-level mortality rates, after accounting for demographic and socioeconomic factors, using data from Philadelphia Vital Statistics and PA hospitals. Findings can inform targeted interventions and policy decisions aimed at improving health equity.
 
 ## Introduction {#sec-introduction}
 
-Describe the problem addressed, its significance, and some background to motivate the problem. This should extend what is in the @sec-overview.
+Unequal access to hospitals and medical services is a pressing challenge in many cities. Residents in districts with limited access may face longer travel distances, delayed treatment, and ultimately higher morbidity and mortality. These disparities can exacerbate existing health inequalities that are linked to socioeconomic status and other demographic factors. Previous research has shown that greater spatial access to hospitals is associated with incidence of emergency general surgery disease an improved spatial access to care is independently linked to lower in-hospital mortality. However, few studies have quantified how geographic accessibility to hospitals affects all-cause mortality at the district level. This study thus examines whether hospital accessibility is associated with district-level mortality rates in Philadelphia, accounting for demographic and socioeconomic factors, using data from Philadelphia Vital Statistics, and PA hospitals.
 
-Explain why your problem is interdisciplinary, what fields can contribute to its understanding, and incorporate background related to what you learned from meeting with faculty/staff.
+This is an interdisciplinary problem encompassing public health, Geographic Information Science (GIS), and health justice. Public health provides the framework for analyzing mortality patterns and methods to control confounding factors. GIS and spatial analytics enable the measurement of hospital accessibility and visualization of spatial inequities, while health justice examines resource distribution and equity issues. Insights from faculty and staff highlighted the importance of using tract-level centroids to calculate accessibility with population weighting, and controlling for social determinants of health (SDOH) to ensure that results are not confounded by underlying socioeconomic factors.
 
 ## Methods {#sec-methods}
 
-Describe the data used and general methodological approach used to address the problem described in the @sec-introduction. Subsequently, incorporate full R code necessary to retrieve and clean data, and perform analysis. Be sure to include a description of code so that others (including your future self) can understand what you are doing and why.
+This study examines the association between hospital accessibility and district-level mortality in Philadelphia. District-level hospital accessibility will be calculated as the population-weighted average of tract-level distances from each tract centroid to the nearest hospital. Descriptive analyses will explore temporal trends in mortality and hospital accessibility to guide modeling choices. Regression models will sequentially adjust for core demographic and socioeconomic confounders, as well as additional social determinants of health (SDOH), with diagnostic checks and sensitivity analyses performed to ensure robust results.
+
+Data sources include Philadelphia Vital Statistics – Mortality (Deaths), Philadelphia Vital Statistics - Population Metrics, Philadelphia Vital Statistics – SDOH and PA Hospitals from OpenDataPhilly. The outcome of interest is the age-adjusted all-cause mortality rate per 100,000 population at the planning-district level. Predictors include hospital count per district and district-level hospital accessibility. Covariates include population density, median household income, number of primary care centers, and additional SDOH indicators.
+
+1.  Load data
+
+```{r}
+library(tidyverse)
+library(tidymodels)
+library(dotwhisker)
+library(glmnet)
+library(tidycensus)
+library(sf)
+library(tigris)
+library(ggplot2)
+
+mortality<-read.csv("Vital_Mortality_PD.csv")
+population<-st_read("Vital_Population_CT/Vital_Population_CT.shp")
+hospital<-st_read("DOH_Hospitals202311/DOH_Hospitals202311.shp")
+sdoh<-read.csv("Vital_Social_Determinants_PD.csv")
+
+population<-population|>
+  select(year,geography_,count_all_,geometry)|>
+  rename(geoid=geography_,
+         count=count_all_)
+
+mortality<-mortality|>
+  filter(METRIC_NAME=="age_adjusted_mortality_rate_per_100k",
+         LEADING_CAUSE_DEATH=="All causes",
+         ESTIMATE_TYPE=="Final")|>
+  select(YEAR,GEOGRAPHY_NAME,METRIC_VALUE)|>
+  rename(mortality=METRIC_VALUE)
+
+hospital<-hospital|>
+  filter(COUNTY=="Philadelphia")|>
+  select(FACILITY_N,STREET,ZIP_CODE,geometry,TELEPHONE_)
+```
 
 ## Results {#sec-results}
 
@@ -33,3 +69,7 @@ Describe your results and include relevant tables, plots, and code/comments used
 ## Conclusion
 
 This the conclusion. The @sec-results can be invoked here.
+
+reference
+
+\(1\) McCrum ML, Allen CM, Han J, Iantorno SE, Presson AP, Wan N. Greater spatial access to care is associated with lower mortality for emergency general surgery. J Trauma Acute Care Surg. 2023 Feb 1;94(2):264-272. doi: 10.1097/TA.0000000000003837. Epub 2022 Nov 15. PMID: 36694335; PMCID: PMC10069479.
