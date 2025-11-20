@@ -28,7 +28,7 @@ This study examines the association between hospital accessibility and district-
 
 Data sources include Philadelphia Vital Statistics – Mortality (Deaths), Philadelphia Vital Statistics - Population Metrics, Philadelphia Vital Statistics – SDOH and PA Hospitals from OpenDataPhilly. The outcome of interest is the age-adjusted all-cause mortality rate per 100,000 population at the planning-district level. Predictors include hospital count per district and district-level hospital accessibility. Covariates include population density, median household income, number of primary care centers, and additional SDOH indicators.
 
-1.  Load data
+1.  Load data & data cleaning
 
 ```{r}
 library(tidyverse)
@@ -39,27 +39,156 @@ library(tidycensus)
 library(sf)
 library(tigris)
 library(ggplot2)
+library(dplyr)
 
 mortality<-read.csv("Vital_Mortality_PD.csv")
-population<-st_read("Vital_Population_CT/Vital_Population_CT.shp")
 hospital<-st_read("DOH_Hospitals202311/DOH_Hospitals202311.shp")
 sdoh<-read.csv("Vital_Social_Determinants_PD.csv")
+district<-st_read("Planning_Districts/Planning_Districts.shp")
 
-population<-population|>
-  select(year,geography_,count_all_,geometry)|>
-  rename(geoid=geography_,
-         count=count_all_)
+#population data from acs
+years <- 2013:2022
+tracts <- map_df(years, function(x) {
+  get_acs(
+    geography = "tract",
+    variables = "B01003_001",  #total population
+    year = x,
+    survey = "acs5",
+    state = "PA",
+    county = "Philadelphia",
+    geometry = TRUE)|>
+    mutate(year = x)
+})
+tracts<-tracts|>
+  select(year,GEOID,estimate,geometry)
 
 mortality<-mortality|>
   filter(METRIC_NAME=="age_adjusted_mortality_rate_per_100k",
          LEADING_CAUSE_DEATH=="All causes",
          ESTIMATE_TYPE=="Final")|>
   select(YEAR,GEOGRAPHY_NAME,METRIC_VALUE)|>
-  rename(mortality=METRIC_VALUE)
+  rename(mortality=METRIC_VALUE,
+         district=GEOGRAPHY_NAME)|>
+  filter(YEAR %in% 2013:2022)
 
 hospital<-hospital|>
   filter(COUNTY=="Philadelphia")|>
-  select(FACILITY_N,STREET,ZIP_CODE,geometry,TELEPHONE_)
+  select(OBJECTID,FACILITY_N,STREET,ZIP_CODE,geometry)|>
+  filter(OBJECTID %in% c(81,98,116,120,126,140,155,156,164,170,208,215))#exclude behavioral health, VA, rehabilitation, and specialty hospitals that do not provide acute medical services
+
+sdoh<-sdoh|>
+  select(year,geography_name,metric_name,metric_value)|>
+  filter(year %in% 2013:2022)
+```
+
+2\. Calculate 1)average distance to nearest hospital 2)numbers of hospitals in each district
+
+```{r}
+#get the centroid of each tract
+tract_centroids <- st_centroid(tracts)
+#unify the crs
+tract_centroids <- st_transform(tract_centroids, 2272)
+hospital <- st_transform(hospital, 2272)
+tracts<- st_transform(tract_centroids, 2272)
+district<- st_transform(district, 2272)
+#get the distance to the nearest hospital for each tract
+distance_matrix <- st_distance(tract_centroids, hospital)
+nearest_distance <- apply(distance_matrix, 1, min)
+tracts$nearest_hospital<-nearest_distance
+#match tracts with planning districts
+tracts_with_district <- st_join(tract_centroids, district, join = st_within)
+tracts$district<-tracts_with_district$DIST_NAME
+tracts <- tracts|> drop_na(district) #THE centroid of tract(GEOID 42101006500) is outside any planning district.Its population is about 0.27% of Philadelphia's total population, so i drop it from the analysis.
+
+#calculate district-level hospital accessibility using tract population weights
+average_distance <- tracts|>
+  group_by(district)|>
+  summarise(weighted_distance = sum(estimate * nearest_hospital) / sum(estimate))
+mortality<-mortality|>
+  left_join(average_distance,by="district")
+
+#count the numbers of hospitals in each district
+hospital_with_district <- st_join(hospital, district, join = st_within)|> 
+  st_drop_geometry()|>
+  rename(district=DIST_NAME)|>
+  group_by(district)|>
+  count()
+mortality<-mortality|>left_join(hospital_with_district, by = "district")|>
+  rename(num_of_hos="n")|>
+  replace_na(list(num_of_hos=0))
+
+
+```
+
+3.**(unfinished)** Plot 1) district-level mortality rates in philly from 2013 to 2022, see if there is some trend or the impact of pandemic; 2) an interactive map of hospital accessibility across philly
+
+```{r}
+#Plotting district-level mortality rates in philly from 2013 to 2022
+mortality |>
+  ggplot(aes(x = YEAR, y = mortality, color = district)) +
+  geom_line() +
+  geom_point() +
+  scale_x_continuous(breaks = 2013:2022) +
+  theme_minimal() +
+  labs(
+    title = "Philadelphia District-level Mortality Rate (2013–2022)",
+    x = "Year",
+    y = "Mortality Rate"
+  )
+
+#Plotting district-level population in philly (2013–2022)
+tract_population<-tracts|>
+  group_by(district,year)|>
+  summarise(population = sum(estimate), .groups = "drop")
+tract_population|>
+  ggplot(aes(x = year, y = population, color = district)) +
+  geom_line() +
+  geom_point() +
+  scale_x_continuous(breaks = 2013:2022) +
+  theme_minimal() +
+  labs(
+    title = "Philadelphia District-level population (2013–2022)",
+    x = "Year",
+    y = "population"
+  )
+
+library(plm)
+pdata <- pdata.frame(mortality, index = c("district", "YEAR"))
+model <- plm(
+  mortality ~ weighted_distance + num_of_hos + factor(YEAR),
+  data = pdata,
+  model = "within"
+)
+summary(model)
+```
+
+4.  **(unfinished)**some basic analysis between hospital accessibility and sdoh factors and mortality rates (eg. t-test); regression between mortality and number of hospitals and weighted distance to the nearest hospital (seems to be negative?); regression that includes SDOH variables.
+
+```{r}
+summary(lm(mortality ~ weighted_distance + num_of_hos, data = mortality))
+summary(lm(mortality ~ weighted_distance + num_of_hos+YEAR, data = mortality))
+mortality_10<-mortality|>
+  group_by(district)|>
+  summarise(aver_10=mean(mortality),
+            weighted_distance = unique(weighted_distance),
+            num_of_hos = unique(num_of_hos))
+summary(lm(aver_10 ~ weighted_distance + num_of_hos, data = mortality_10))
+
+mortality_pre_pandemic<-mortality|>
+  filter(YEAR %in% 2013:2019)|>
+  group_by(district)|>
+  summarise(aver_7=mean(mortality),
+            weighted_distance = unique(weighted_distance),
+            num_of_hos = unique(num_of_hos))
+summary(lm(aver_7 ~ weighted_distance + num_of_hos, data =mortality_pre_pandemic))
+
+mortality_post_pandemic<-mortality|>
+  filter(YEAR %in% 2020:2022)|>
+  group_by(district)|>
+  summarise(aver_3=mean(mortality),
+            weighted_distance = unique(weighted_distance),
+            num_of_hos = unique(num_of_hos))
+summary(lm(aver_3 ~ weighted_distance + num_of_hos, data = mortality_post_pandemic))
 ```
 
 ## Results {#sec-results}

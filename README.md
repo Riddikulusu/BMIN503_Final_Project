@@ -1,19 +1,22 @@
-# BMIN503/EPID600 Final Project
+# Spatial Analysis of Hospital Accessibility and District-Level Mortality in Philadelphia
 
-This repository contains templates for the final written report and GitHub repository. Follow the instructions below to clone this repository, and then turn in your final project's code via a pull request to this repository.
+**Objective:**\
+Assess whether spatial differences in hospital availability and accessibility are associated with district-level mortality in Philadelphia, accounting for demographic and socioeconomic factors.
 
-1. To start, **fork** this BMIN503_Final_Project repository.
-1. **Clone** the forked repository to your computer.
-1. Modify the files provided, add your own, and **commit** changes to complete your final project.
-1. **Push**/sync the changes up to your GitHub account.
-1. Create a **pull request** on this, the original BMIN503_Final_Project, repository to turn in your final project.
+**Method:**\
+I calculate district-level hospital accessibility using tract-population–weighted distances to the nearest hospital and link these metrics with annual mortality data (2013–2022). After describing temporal patterns, I fit regression models—from unadjusted to fully adjusted SDOH models—to evaluate whether hospital count and accessibility predict mortality. Diagnostic checks, VIF assessment, and sensitivity analyses are used to test robustness.
 
+**Materials:**
 
-Follow the instructions [here][forking] if you are unsure what the above steps mean.
+-   `final_project_template.qmd`: analysis code
 
-DUE DATE FOR FINAL VERSION: 12/13/24 11:59PM. This is a hard deadline. Turn in whatever you have by this date.
+-   `DOH_Hospitals202311`: hospital locations (PA)
 
+-   `Planning_Districts`: district boundaries for accessibility calculation
 
-<!-- Links -->
-[forking]: https://guides.github.com/activities/forking/
+-   `Vital_Mortality_PD.csv`: district-level mortality
 
+-   `Vital_Social_Determinants_PD.csv`: SDOH indicators
+
+**Expected Contribution:**\
+Provide an initial assessment of whether disparities in healthcare access relate to differences in mortality across Philadelphia districts, supporting evidence-based planning and health equity efforts.
