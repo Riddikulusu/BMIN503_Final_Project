@@ -450,7 +450,7 @@ The final model (Pooled OLS+Clustered SE+TFE model) showed that Accessibility(p=
 
 ## Conclusion
 
-The models prove that Hospital accessibility is not an independent statistical predictor of mortality rates. Instead, poverty and unemployment are the true contributors. The counter-intuitive correlation between high accessibility and high mortality could be explained by selection bias, as public infrastructure is often sited in high-need, low-Socioeconomic Status areas. Consequently, reducing mortality inequality requires a shift in intervention focus from physical hospital construction to economic intervention (such as job creation and poverty alleviation). Resources must be prioritized based on unemployment and poverty rates, the real drivers of mortality. For future research, expanding the sample size and integrating real-time hospital capacity data are recommended to enhance accuracy.
+The models prove that Hospital accessibility is not an independent statistical predictor of mortality rates. Instead, poverty and unemployment are the true contributors. A 1% increase in Poverty is associated with 8.9 additional deaths per 100k (p \< 0.001); a 1% increase in Unemployment is associated with 11.1 additional deaths per 100k (p \< 0.01). Consequently, reducing mortality inequality requires a shift in intervention focus from physical hospital construction to economic intervention (such as job creation and poverty alleviation). Resources must be prioritized based on unemployment and poverty rates, the real drivers of mortality. For future research, expanding the sample size and integrating real-time hospital capacity data are recommended to enhance accuracy.
 
 ## Acknowledgement
 
