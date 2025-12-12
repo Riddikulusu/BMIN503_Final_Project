@@ -1,7 +1,7 @@
 ---
-title: "Your Title"
+title: "Spatial Analysis of Hospital Accessibility and District-Level Mortality in Philadelphia"
 subtitle: "BMIN503/EPID600 Final Project"
-author: "FirstName LastName"
+author: "Yannan Bao"
 format: html
 editor: visual
 number-sections: true
@@ -10,27 +10,30 @@ embed-resources: true
 
 ------------------------------------------------------------------------
 
-Use this template to complete your project throughout the course. Your Final Project presentation will be based on the contents of this document. Replace the title/name above and text below with your own, but keep the headers. Feel free to change the theme and other display settings, although this is not required. I added a new sentence
-
 ## Overview {#sec-overview}
 
-Healthcare access is a critical determinant of population health, yet spatial disparities can contribute to uneven health outcomes. This project investigates spatial disparities in healthcare access and their potential impact on mortality rates across Philadelphia districts. The main goal is to examine whether the distribution and accessibility of hospitals are associated with district-level mortality rates, after accounting for demographic and socioeconomic factors, using data from Philadelphia Vital Statistics and PA hospitals. Findings can inform targeted interventions and policy decisions aimed at improving health equity.
+Healthcare access is a critical determinant of population health, yet spatial disparities can contribute to uneven health outcomes. This project investigates spatial disparities in healthcare access and their potential impact on mortality rates across Philadelphia districts. The main goal is to examine whether the spatial access to hospitals are associated with mortality rates, after adjusting for Social Determinants of Health (SDOH), using data from OpenDataPhilly and American Community Survey (ACS). Findings can inform targeted interventions and policy decisions aimed at improving population health.
 
 ## Introduction {#sec-introduction}
 
-Unequal access to hospitals and medical services is a pressing challenge in many cities. Residents in districts with limited access may face longer travel distances, delayed treatment, and ultimately higher morbidity and mortality. These disparities can exacerbate existing health inequalities that are linked to socioeconomic status and other demographic factors. Previous research has shown that greater spatial access to hospitals is associated with incidence of emergency general surgery disease an improved spatial access to care is independently linked to lower in-hospital mortality. However, few studies have quantified how geographic accessibility to hospitals affects all-cause mortality at the district level. This study thus examines whether hospital accessibility is associated with district-level mortality rates in Philadelphia, accounting for demographic and socioeconomic factors, using data from Philadelphia Vital Statistics, and PA hospitals.
+Unequal access to hospitals and healthcare services is a pressing challenge in many cities. Residents in districts with limited access may face longer travel distances, delayed treatment, and ultimately higher morbidity and mortality. These disparities can exacerbate existing health inequalities that are linked to socioeconomic status and other demographic factors. Previous research has shown that increasing spatial access to care is independently associated with lower in-hospital mortality(1). However, few studies have quantified how hospital accessibility affects all-cause mortality. This study thus examines whether hospital accessibility is associated with district-level mortality rates in Philadelphia, accounting for socioeconomic factors, using data from OpenDataPhilly and American Community Survey (ACS).
 
-This is an interdisciplinary problem encompassing public health, Geographic Information Science (GIS), and health justice. Public health provides the framework for analyzing mortality patterns and methods to control confounding factors. GIS and spatial analytics enable the measurement of hospital accessibility and visualization of spatial inequities, while health justice examines resource distribution and equity issues. Insights from faculty and staff highlighted the importance of using tract-level centroids to calculate accessibility with population weighting, and controlling for social determinants of health (SDOH) to ensure that results are not confounded by underlying socioeconomic factors.
+This is an interdisciplinary problem encompassing population health, Geographic Information Science (GIS), and health equity. Population health provides the framework for analyzing mortality patterns and methods to control confounding factors. GIS and spatial analytics enable the measurement of hospital accessibility and visualization of spatial inequities, while health justice examines resource distribution and equity issues. Insights from faulty were critical in guiding the methodological choices.
 
 ## Methods {#sec-methods}
 
-This study examines the association between hospital accessibility and district-level mortality in Philadelphia. District-level hospital accessibility will be calculated as the population-weighted average of tract-level distances from each tract centroid to the nearest hospital. Descriptive analyses will explore temporal trends in mortality and hospital accessibility to guide modeling choices. Regression models will sequentially adjust for core demographic and socioeconomic confounders, as well as additional social determinants of health (SDOH), with diagnostic checks and sensitivity analyses performed to ensure robust results.
+This study investigates the structural association between hospital accessibility and district-level mortality across 18 planning districts in Philadelphia (2013–2022). The core predictor, Hospital Accessibility (Ai), was quantified using the Two-Step Floating Catchment Area (2SFCA) method based on a 15-minute driving threshold on the actual road network, integrating both proximity and demand competition. The analytical strategy proceeds in three phases: First, descriptive statistics and exploratory plots were used to examine the spatial and temporal structure of the dataset. Second, structural analysis was conducted using univariate and SDOH-corrected multivariate Cross-Sectional OLS models. Third, Two-Way Fixed Effects (FE) model and the Pooled OLS model augmented with Clustered Standard Errors (SE) and Time Fixed Effects (TFE) were used for dynamic validation.
 
-Data sources include Philadelphia Vital Statistics – Mortality (Deaths), Philadelphia Vital Statistics - Population Metrics, Philadelphia Vital Statistics – SDOH and PA Hospitals from OpenDataPhilly. The outcome of interest is the age-adjusted all-cause mortality rate per 100,000 population at the planning-district level. Predictors include hospital count per district and district-level hospital accessibility. Covariates include population density, median household income, number of primary care centers, and additional SDOH indicators.
+Data sources include OpenDataPhilly and American Community Survey (ACS). The outcome of interest is the age-adjusted all-cause mortality rate per 100,000 population at the planning-district level. Independent variable is hospital accessibility. Covariates include Poverty Rate, NH_Black population percentage, and Unemployment Rate.
 
-1.  Load data & data cleaning
+### 1. Data Preparation
+
+"Philadelphia Vital Statistics – Mortality (Deaths)", "PA Hospitals" and "Planning Districts" were accessed from OpenDataPhilly. The outcome indicator, District-level mortality rates were measured by "final", "All causes", "age_adjusted_mortality_rate_per_100k". Key Social Determinants of Health (SDOH) variables and population counts were collected at the Census Tract level from the ACS 5-year estimates. SDOH factors selected were Poverty Rate, NH_Black population percentage, and Unemployment Rate. The variable for 'without insurance rate' was excluded due to poor data quality (approximately 1/3 zero values). Hospital data excluded specialty facilities (behavioral health, VA, rehabilitation) that do not provide acute medical services. The study period is 2013–2022.
+
+Census tracts with zero population were excluded to remove non-residential areas. The tract-level data was then transformed to match Planning Districts for further analysis.
 
 ```{r}
+
 library(tidyverse)
 library(tidymodels)
 library(dotwhisker)
@@ -40,92 +43,322 @@ library(sf)
 library(tigris)
 library(ggplot2)
 library(dplyr)
+library(osrm)
+library(leaflet)
+library(RColorBrewer)
+library(plm)
+library(lmtest)
+library(sandwich)
+library(car)
+library(broom)
+options(tigris_use_cache = TRUE)
 
 mortality<-read.csv("Vital_Mortality_PD.csv")
 hospital<-st_read("DOH_Hospitals202311/DOH_Hospitals202311.shp")
-sdoh<-read.csv("Vital_Social_Determinants_PD.csv")
 district<-st_read("Planning_Districts/Planning_Districts.shp")
 
-#population data from acs
+#retrieve data from acs
 years <- 2013:2022
-tracts <- map_df(years, function(x) {
-  get_acs(
-    geography = "tract",
-    variables = "B01003_001",  #total population
-    year = x,
-    survey = "acs5",
-    state = "PA",
-    county = "Philadelphia",
-    geometry = TRUE)|>
-    mutate(year = x)
+acs_vars <- c(Total_Pop = "B01003_001",     # Total Population
+              Poverty = "B17001_002",       #Income in the past 12 months below poverty level
+              NH_Black = "B03002_004",      # Not Hispanic or Latino: Black or African American alone
+              Unemployed = "B23025_005",    # Unemployed (Civilian Labor Force)
+              Labor_Force = "B23025_003")   # Civilian Labor Force (Total)
+
+
+acs <- map_df(years, function(x) {
+  suppressMessages(
+    suppressWarnings(
+      get_acs(
+        geography = "tract",
+        variables = acs_vars,
+        year = x,
+        survey = "acs5",
+        state = "PA",
+        county = "Philadelphia",
+        geometry = TRUE ))) |>
+  mutate(year = x)
 })
-tracts<-tracts|>
-  select(year,GEOID,estimate,geometry)
+
+acs<- acs|>
+  #Reshape the long-format table into a wide-format structure
+  pivot_wider(id_cols = c(GEOID,year,geometry),   
+              names_from = variable,         
+              values_from = estimate,
+              values_fn = mean)|> #for duplicate metrics, calculate the average
+  filter(Total_Pop > 0)|>#remove tracts where no one lives
+  #calculate percentage to replace absolute values
+  mutate(Poverty = (Poverty / Total_Pop) * 100,
+         NH_Black = (NH_Black / Total_Pop) * 100,
+         Unemployed = (Unemployed / Labor_Force) * 100)|>
+  select(-Labor_Force)#remove the unusable variable
 
 mortality<-mortality|>
   filter(METRIC_NAME=="age_adjusted_mortality_rate_per_100k",
          LEADING_CAUSE_DEATH=="All causes",
          ESTIMATE_TYPE=="Final")|>
-  select(YEAR,GEOGRAPHY_NAME,METRIC_VALUE)|>
-  rename(mortality=METRIC_VALUE,
+  select(YEAR,METRIC_VALUE,GEOGRAPHY_NAME)|>
+  rename(year=YEAR,
+         mortality=METRIC_VALUE,
          district=GEOGRAPHY_NAME)|>
-  filter(YEAR %in% 2013:2022)
+  filter(year %in% 2013:2022)
 
 hospital<-hospital|>
   filter(COUNTY=="Philadelphia")|>
   select(OBJECTID,FACILITY_N,STREET,ZIP_CODE,geometry)|>
-  filter(OBJECTID %in% c(81,98,116,120,126,140,155,156,164,170,208,215))#exclude behavioral health, VA, rehabilitation, and specialty hospitals that do not provide acute medical services
+  filter(OBJECTID %in% c(81,98,116,120,126,140,155,156,164,170,208,215)) #exclude behavioral health, VA, rehabilitation, and specialty hospitals that do not provide acute medical services
 
-sdoh<-sdoh|>
-  select(year,geography_name,metric_name,metric_value)|>
-  filter(year %in% 2013:2022)
-```
+#unify crs
+acs <- st_transform(acs, 4326)
+hospital <- st_transform(hospital, 4326)
+district<- st_transform(district, 4326)
 
-2\. Calculate 1)average distance to nearest hospital 2)numbers of hospitals in each district
-
-```{r}
-#get the centroid of each tract
-tract_centroids <- st_centroid(tracts)
-#unify the crs
-tract_centroids <- st_transform(tract_centroids, 2272)
-hospital <- st_transform(hospital, 2272)
-tracts<- st_transform(tract_centroids, 2272)
-district<- st_transform(district, 2272)
-#get the distance to the nearest hospital for each tract
-distance_matrix <- st_distance(tract_centroids, hospital)
-nearest_distance <- apply(distance_matrix, 1, min)
-tracts$nearest_hospital<-nearest_distance
 #match tracts with planning districts
-tracts_with_district <- st_join(tract_centroids, district, join = st_within)
-tracts$district<-tracts_with_district$DIST_NAME
-tracts <- tracts|> drop_na(district) #THE centroid of tract(GEOID 42101006500) is outside any planning district.Its population is about 0.27% of Philadelphia's total population, so i drop it from the analysis.
-
-#calculate district-level hospital accessibility using tract population weights
-average_distance <- tracts|>
-  group_by(district)|>
-  summarise(weighted_distance = sum(estimate * nearest_hospital) / sum(estimate))
-mortality<-mortality|>
-  left_join(average_distance,by="district")
-
-#count the numbers of hospitals in each district
-hospital_with_district <- st_join(hospital, district, join = st_within)|> 
-  st_drop_geometry()|>
+tracts_unique <- acs |>
+  select(GEOID, geometry) |>
+  distinct(GEOID, .keep_all = TRUE)
+tracts_centroids <- st_centroid(tracts_unique)
+tracts_with_district <- st_join(tracts_centroids, district, join = st_within)|>
+  select(GEOID,DIST_NAME)|>
+  st_drop_geometry()
+acs<-left_join(acs, tracts_with_district,by="GEOID")|>
   rename(district=DIST_NAME)|>
-  group_by(district)|>
-  count()
-mortality<-mortality|>left_join(hospital_with_district, by = "district")|>
-  rename(num_of_hos="n")|>
-  replace_na(list(num_of_hos=0))
-
+  filter(!is.na(district))# the tract (GEOID:42101006500) can't match with any district, removing it won't greatly impact the results
 
 ```
 
-3.**(unfinished)** Plot 1) district-level mortality rates in philly from 2013 to 2022, see if there is some trend or the impact of pandemic; 2) an interactive map of hospital accessibility across philly
+### 2. Core Variable Construction: Hospital Accessibility
+
+The primary explanatory variable, Hospital Accessibility ($A_i$), was calculated using the Two-Step Floating Catchment Area (2SFCA) method(2), a standard spatial metric supported by urban health literature to measure potential healthcare access. This method accounts for both geographical proximity and demand competition using the actual road network (OpenStreetMap). The accessibility was defined by a 15-minute driving time threshold ($d_0$). Calculation was performed at the tract centroid level to ensure higher accuracy before aggregating to the District level.
+
+Step 1 (Supply-to-Demand Ratio, $\mathbf{R_j}$): For each hospital $j$ (Supply), the ratio ($R_j$) was calculated by dividing the hospital's capacity (where $S_j = 1$ unit, simplifying all hospital services to a unit of accessibility) by the total population demand ($\sum P_k$) that falls within its 15-minute catchment area.
+
+Step 2 (Accessibility Score, $\mathbf{A_i}$): The final accessibility score ($A_i$) for each tract centroid $i$ (Demand location) was calculated by summing the supply-to-demand ratios ($R_j$) of all hospitals accessible from $i$ within the same 15-minute travel time area.
+
+The final score was scaled by 100,000 to represent accessibility per 100,000 people, aligning the unit with the mortality rate for interpretation. Then tract-level accessibility scores and SDOH variables were aggregated to the District level using tract population weights.
 
 ```{r}
-#Plotting district-level mortality rates in philly from 2013 to 2022
-mortality |>
-  ggplot(aes(x = YEAR, y = mortality, color = district)) +
+##calculate driving time matrix (tract centroid---hospital)
+all_ids <- tracts_centroids$GEOID
+batch_size <- 50 # set batch size to prevent network timeouts
+results <- list()#initialize a list for storing results
+
+for(i in seq(1, length(all_ids), by=batch_size)){
+  idx <- i:min(i+batch_size-1, length(all_ids))
+  batch <- tracts_centroids[idx, ]
+  # Call the OSRM service to calculate the travel time matrix (duration)
+  dist_matrix <- osrmTable(src = batch, dst = hospital)
+  tra_time <- as.data.frame(dist_matrix$durations)
+  rownames(tra_time)<-batch$GEOID
+  results[[length(results)+1]] <- tra_time
+}
+travel_time <- bind_rows(results)#convert the list into a big dataframe(driving time matrix)
+
+## use 2SFCA to calculate hospital accessibility score
+d0 <- 15# catchment
+access<-list()
+for (y in years){
+  population<-acs|>
+    filter(year==y)
+  tra <- travel_time[population$GEOID, ]#ensure that index of population and travel_time are consistent
+  
+  #step 1:calculate Hospital Supply Ratio Rj for each hospital j  
+  pop_sum<-apply(tra,2,function(d){
+    within<-which(d<=d0)#get the index of tracts that are withn t0 to each hospital j
+    sum(population$Total_Pop[within])
+  })
+  R_j <-ifelse(pop_sum==0,0,1 / pop_sum )
+
+  # calculate Ai for each tract i
+  A_i <- apply(tra,1,function(d){
+    within<-which(d<=d0)#get the index of hospitals that are withn t0 to each tract i
+    sum(R_j[within],na.rm = TRUE)
+  })
+
+  tracts_access<-mutate(population,A_i=A_i,year=y)
+  access[[length(access)+1]] <- tracts_access
+}
+final_access<-bind_rows(access)
+acs<-mutate(acs,A_i_100k=final_access$A_i*100000)
+
+
+#calculate district-level hospital accessibility and sdoh values using tract population weights
+weighted_district <- acs|>
+  st_drop_geometry()|>
+  group_by(district,year)|>
+  summarise(Ai= sum(Total_Pop * A_i_100k) / sum(Total_Pop),
+            NH_Black=sum(Total_Pop * NH_Black) / sum(Total_Pop),
+            Poverty=sum(Total_Pop * Poverty) / sum(Total_Pop),
+            Unemployed=sum(Total_Pop * Unemployed,na.rm=TRUE) / sum(Total_Pop),#unemployed have na because labor force in some tract maybe 0 
+            .groups = "drop" )
+mortality<-mortality|>
+  left_join(weighted_district,by=c("district","year"))
+```
+
+Further analyses will be conducted in the Results section.
+
+## Results {#sec-results}
+
+### 1. Descriptive Statistics
+
+Descriptive analysis was performed to calculate the mean, standard deviation, minimum, maximum, and between- and within-variation for all variables. This helped determine the data structure and quantify the structural gap versus annual fluctuation.
+
+```{r}
+##Descriptive analysis 
+avg_mortality<- mortality|>
+  group_by(district)|>
+  summarise(avg_mortality=mean(mortality),
+            avg_Ai=mean(Ai),
+            avg_NH_Black=mean(NH_Black),
+            avg_Poverty=mean(Poverty),
+            avg_Unemployed=mean(Unemployed))
+
+vars <- c("mortality", "Ai","NH_Black", "Poverty","Unemployed") 
+
+stats <- function(full_data, avg_data, var_name) {
+  # OVERALL statistics (180):The total variation across all observations
+  overall_mean <- mean(full_data[[var_name]])
+  overall_sd <- sd(full_data[[var_name]])
+  overall_min <- min(full_data[[var_name]])
+  overall_max <- max(full_data[[var_name]])
+  
+  #BETWEEN statistics (18 districts)：The variation of the group (district) means
+  avg_var_name <- paste0("avg_", var_name)
+  between_mean <- mean(avg_data[[avg_var_name]])
+  between_sd <- sd(avg_data[[avg_var_name]])
+  between_min <- min(avg_data[[avg_var_name]])
+  between_max <- max(avg_data[[avg_var_name]])
+  
+  # WITHIN (10 years)
+  # The 'Within' component captures the variability over time (or within each group), after removing the group-level mean. It is derived from the variance decomposition.
+  # formula: Overall Variance = Between Variance + Within Variance
+  # Within Std. Dev. = sqrt(Overall Std. Dev.^2 - Between Std. Dev.^2)
+  within_sd_sq <- overall_sd^2 - between_sd^2
+  within_sd <- ifelse(within_sd_sq < 0, 0,sqrt(within_sd_sq)) #in case of negative values
+  
+  #dataframe construction
+  stats_results <- data.frame(
+    variable = var_name,
+    statistic = c("Overall", "Between", "Within"),
+    #Within Mean is set to 0 because within variation is defined as (x_it - x̄_i),whose mean is zero for each group by construction.
+    Mean = c(overall_mean, between_mean, 0.0), 
+    Sd = c(overall_sd, between_sd, within_sd),
+    # Min and Max for the 'Within' component are less informative for de-meaned data and are thus set to NA to avoid misinterpretation.
+    Min = c(overall_min, between_min, NA),
+    Max = c(overall_max, between_max, NA))
+  
+  return(stats_results)
+}
+
+descriptive_list <- lapply(vars, function(var) {
+  stats(mortality, avg_mortality, var)
+})
+
+final_descriptive <- bind_rows(descriptive_list)
+
+final_descriptive
+```
+
+### 2. Exploratory plots
+
+Plots are generated for exploratory analysis: 1) Static tract-level accessibility map (10-year average); 2) Static district-level mortality map (10-year average); 3) Annual mortality rate line charts. The goal was to observe inter-area differences and temporal trends and see if "higher accessibility equals lower mortality."
+
+```{r}
+##Exploratory plots
+#1)Static tract-level accessibility map (10-year average)
+acs_avg<-acs|>
+  st_drop_geometry()|>
+  group_by(GEOID)|>
+  summarise(Ai_avg = mean(A_i_100k, na.rm = TRUE))|>
+  left_join(tracts_unique,by="GEOID")|>
+  st_as_sf()
+
+#get the boundary of philly to make the picture complete(fill the tracts with no living population)
+philly_county_boundary <- suppressMessages(
+        suppressWarnings(
+          get_acs(
+            geography = "county",
+            variables = "B01001_001",
+            state = "PA",
+            county = "Philadelphia",
+            geometry = TRUE)))|>
+  st_transform(4326)
+
+#create the breaks manually
+quants <- seq(0, 1, by = 1/9)
+breaks <- quantile(acs_avg$Ai_avg, probs = quants, na.rm = TRUE)
+labels <- c()
+for (i in 1:9) {
+    labels[i] <- paste0(round(breaks[i], 4), " - ", round(breaks[i + 1], 4))}
+
+pal_fun1 <- colorBin(
+  palette = "YlOrRd",
+  domain = acs_avg$Ai_avg,
+  bins = breaks, 
+  pretty = FALSE)
+
+# Pop-up message
+pu_message1 <- paste0("GEOID: ", acs_avg$GEOID,"<br>Hospital Accessibility per 100k people:<br>", round(acs_avg$Ai_avg, 4))
+
+#plotting
+map_Ai <- leaflet(acs_avg) |>
+  #add border as background color filling
+  addPolygons(stroke = FALSE,
+              data = philly_county_boundary, 
+              fillColor = "lightgray", 
+              fillOpacity = 0.6) |>
+  #add tract-level hospital accessibilty
+  addPolygons(stroke = FALSE,                        # remove polygon borders
+              fillColor = ~ pal_fun1(Ai_avg),
+              fillOpacity = 0.8, smoothFactor = 0.5, 
+              popup = pu_message1) |>
+  #add district border lines
+  addPolylines(data = district,
+               weight = 2, 
+               color = "black")|>
+  addProviderTiles(providers$CartoDB.Positron) |>   # add third party provider tile 
+  addLegend("bottomright",               
+            pal = pal_fun1, 
+            values = ~ Ai_avg,
+            labels = labels,      
+            title = 'Hospital Accessibility<br>per 100k people',     
+            opacity = 1) |>
+  addLegend("bottomright", 
+          colors = "lightgray", 
+          labels = "Non-Residential Area", 
+          opacity = 1,
+          title = "")|>
+  addScaleBar()
+
+map_Ai
+
+#2) Static district-level mortality map (10-year average)
+avg_mortality<-district|>
+  rename(district=DIST_NAME)|>
+  select(district)|>
+  right_join(avg_mortality,by="district")
+
+pal_fun2 <- colorNumeric("BuPu", NULL) 
+pu_message2 <- paste0(avg_mortality$district,"<br>Mortality per 100k people:<br>", round(avg_mortality$avg_mortality, 4))
+
+map_mortality <- leaflet(avg_mortality) |>
+  addPolygons(stroke = FALSE,                       
+              fillColor = ~ pal_fun2(avg_mortality),
+              fillOpacity = 0.8, smoothFactor = 0.5, 
+              popup = pu_message2) |>
+  addProviderTiles(providers$CartoDB.Positron) |>
+  addLegend("bottomright",               
+            pal = pal_fun2,              
+            values = ~ avg_mortality,  
+            title = 'Mortality Rate per 100k people',    
+            opacity = 1) |>              
+  addScaleBar()
+
+map_mortality
+
+#3) Annual mortality rate line charts.
+line_mortality <- mortality |>
+  ggplot(aes(x = year, y = mortality, color = district)) +
   geom_line() +
   geom_point() +
   scale_x_continuous(breaks = 2013:2022) +
@@ -136,69 +369,95 @@ mortality |>
     y = "Mortality Rate"
   )
 
-#Plotting district-level population in philly (2013–2022)
-tract_population<-tracts|>
-  group_by(district,year)|>
-  summarise(population = sum(estimate), .groups = "drop")
-tract_population|>
-  ggplot(aes(x = year, y = population, color = district)) +
-  geom_line() +
-  geom_point() +
-  scale_x_continuous(breaks = 2013:2022) +
-  theme_minimal() +
-  labs(
-    title = "Philadelphia District-level population (2013–2022)",
-    x = "Year",
-    y = "population"
-  )
-
-library(plm)
-pdata <- pdata.frame(mortality, index = c("district", "YEAR"))
-model <- plm(
-  mortality ~ weighted_distance + num_of_hos + factor(YEAR),
-  data = pdata,
-  model = "within"
-)
-summary(model)
+line_mortality
 ```
 
-4.  **(unfinished)**some basic analysis between hospital accessibility and sdoh factors and mortality rates (eg. t-test); regression between mortality and number of hospitals and weighted distance to the nearest hospital (seems to be negative?); regression that includes SDOH variables.
+### 3. Preliminary Structural Analysis (Cross-Sectional OLS)
+
+Use ten-year averages (N=18 districts) to do structural Analysis:1) univariate linear regression; 2) sdoh-adjusted multivariate OLS
 
 ```{r}
-summary(lm(mortality ~ weighted_distance + num_of_hos, data = mortality))
-summary(lm(mortality ~ weighted_distance + num_of_hos+YEAR, data = mortality))
-mortality_10<-mortality|>
-  group_by(district)|>
-  summarise(aver_10=mean(mortality),
-            weighted_distance = unique(weighted_distance),
-            num_of_hos = unique(num_of_hos))
-summary(lm(aver_10 ~ weighted_distance + num_of_hos, data = mortality_10))
+#1）univariate linear regression (scatter plot)
+point_mor_ai<-ggplot(avg_mortality, aes(x = avg_Ai, y = avg_mortality)) +
+  geom_point(aes(color = avg_mortality), size = 4) +
+  geom_smooth(method = "lm", se = FALSE, color = "darkgrey", linetype = "dashed") +
+  labs(title = "District-Level Mortality Rate vs. Hospital Accessibility (2013-2022)",
+       x = "Hospital Accessibility (per 100k people)",
+       y = "Mortality Rate (per 100k people)",
+       color = "Mortality Rate" ) +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 12),
+          strip.text = element_text(face = "bold"),
+          legend.position = "right")
 
-mortality_pre_pandemic<-mortality|>
-  filter(YEAR %in% 2013:2019)|>
-  group_by(district)|>
-  summarise(aver_7=mean(mortality),
-            weighted_distance = unique(weighted_distance),
-            num_of_hos = unique(num_of_hos))
-summary(lm(aver_7 ~ weighted_distance + num_of_hos, data =mortality_pre_pandemic))
+point_mor_ai
 
-mortality_post_pandemic<-mortality|>
-  filter(YEAR %in% 2020:2022)|>
-  group_by(district)|>
-  summarise(aver_3=mean(mortality),
-            weighted_distance = unique(weighted_distance),
-            num_of_hos = unique(num_of_hos))
-summary(lm(aver_3 ~ weighted_distance + num_of_hos, data = mortality_post_pandemic))
+#2） sdoh-adjusted multivariate OLS 
+avg_model<-lm(avg_mortality ~ avg_Ai+ avg_NH_Black + avg_Poverty + avg_Unemployed, 
+              data=avg_mortality)
+
+vif(avg_model)
+summary(avg_model)
 ```
 
-## Results {#sec-results}
+1\) Univariate linear regression: A scatter plot and univariate OLS model were used, which revealed a counter-intuitive positive correlation, suggesting that higher access coincided with higher mortality.
 
-Describe your results and include relevant tables, plots, and code/comments used to obtain them. You may refer to the @sec-methods as needed. End with a brief conclusion of your findings related to the question you set out to address. You can include references if you'd like, but this is not required.
+2\) sdoh-adjusted multivariate OLS : To better estimate the impact of accessibility on mortality, a multivariate cross-sectional OLS model was constructed, including SDOH variables to correct for this structural bias. After correction, Accessibility (p=0.534), NH_Black(p=0.381) and Poverty(p=0.143) were insignificant, and the Unemployment Rate (p=0.067) was marginally significant. VIF analysis confirmed multicollinearity between Poverty (5.66) and Unemployment (5.28). This multicollinearity suggested the low statistical power of the cross-sectional OLS due to the small sample size (N=18), necessitating a move to the panel structure.
+
+### 4. Dynamic Validation (Panel Data): Pooled OLS + Clustered SE+TFE model
+
+The final dynamic analysis utilized the full panel structure (18 districts \* 10 years = 180 observations) to overcome statistical limitations. Model: 1)Two-Way Fixed Effects (FE) model; 2) Pooled OLS+Clustered SE+TFE model
+
+```{r}
+#1）Two-Way Fixed Effects (FE) model
+# construct panel data
+pdata <- pdata.frame(mortality, index = c("district", "year"))
+
+fixed_model <- plm(
+  mortality ~ Ai+ NH_Black + Poverty + Unemployed ,
+  data = pdata,
+  model = "within",
+  effect="twoways"
+)
+
+summary(fixed_model)
+
+#2) Pooled OLS+Clustered SE+TFE model (final model)
+pooled_model <- plm(
+    mortality ~ Ai + NH_Black+ Poverty + Unemployed + factor(year),
+    data = pdata,
+    model = "pooling"
+)
+
+# Calculate Cluster-Robust Standard Errors
+robust_se_clustered <- vcovHC(
+    pooled_model, 
+    type = "HC1", 
+    #Cluster by group (District) to correct for within-district serial correlation
+    cluster = "group" 
+)
+# Use coeftest to apply the new cluster-robust standard errors to the model coefficients
+summary_robust <- coeftest(pooled_model, vcov = robust_se_clustered)
+tidy(summary_robust)
+
+```
+
+1\) Fixed Effects Challenge (Failure): An initial Two-Way Fixed Effects (FE) model was attempted to control for time-invariant area differences and time-specific shocks (e.g., COVID-19 pandemic led to 2020 mortality spike). However, the FE model exhibited model failure with negative Adjusted R\^2 (Adjusted R\^2=-0.163), which might be caused by the little change of independent variables over the ten-year period, leading to low statistical power.
+
+2\) Pooled OLS+Clustered SE+TFE model: So i switched to the Pooled OLS model to leverage high Between-Variation and increase statistical power. To ensure the robustness of the OLS coefficients, the model was augmented with two crucial corrections: Clustered Standard Errors and Time Fixed Effects (TFE). Clustered Standard Errors (by district) were applied to eliminate the bias caused by within-group serial correlation, recognizing that observations within the same district across different years are not independent. Time Fixed Effects (TFE) were included to control for unobserved, time-specific shocks common to all districts (e.g., the Opioid Crisis and the COVID-19 pandemic).
+
+The final model (Pooled OLS+Clustered SE+TFE model) showed that Accessibility(p=0.428) and NH_Black(p=0.369) remain insignificant, while Poverty(p\<0.001) and Unemployment(p\<0.01)are highly significant. The model successfully isolated the dynamic contribution of the Unemployment rate, distinguishing it from the static contribution of Poverty. Quantitatively, a 1% increase in Poverty is associated with 8.9 additional deaths per 100k (p \< 0.001); a 1% increase in Unemployment is associated with 11.1 additional deaths per 100k (p \< 0.01).
 
 ## Conclusion
 
-This the conclusion. The @sec-results can be invoked here.
+The models prove that Hospital accessibility is not an independent statistical predictor of mortality rates. Instead, poverty and unemployment are the true contributors. The counter-intuitive correlation between high accessibility and high mortality could be explained by selection bias, as public infrastructure is often sited in high-need, low-Socioeconomic Status areas. Consequently, reducing mortality inequality requires a shift in intervention focus from physical hospital construction to economic intervention (such as job creation and poverty alleviation). Resources must be prioritized based on unemployment and poverty rates, the real drivers of mortality. For future research, expanding the sample size and integrating real-time hospital capacity data are recommended to enhance accuracy.
 
-reference
+## Acknowledgement
+
+Sincere thanks to Professor Anurag Verma, Professor Brielin C Brown, Chloe F Paris (TA) for their invaluable guidance, expertise, and constructive feedback throughout this research. Special thanks to Max Salvatore (TA) and all classmates for their kindness and help.
+
+## Reference
 
 \(1\) McCrum ML, Allen CM, Han J, Iantorno SE, Presson AP, Wan N. Greater spatial access to care is associated with lower mortality for emergency general surgery. J Trauma Acute Care Surg. 2023 Feb 1;94(2):264-272. doi: 10.1097/TA.0000000000003837. Epub 2022 Nov 15. PMID: 36694335; PMCID: PMC10069479.
+
+\(2\) Luo, W., & Wang, F. (2003). Measures of spatial accessibility to health care in a GIS environment: Synthesis and a case study in the Chicago region. *Environment and Planning B: Planning and Design, 30*(6), 865–884. https://doi.org/10.1068/b29120

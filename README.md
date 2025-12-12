@@ -1,10 +1,10 @@
 # Spatial Analysis of Hospital Accessibility and District-Level Mortality in Philadelphia
 
 **Objective:**\
-Assess whether spatial differences in hospital availability and accessibility are associated with district-level mortality in Philadelphia, accounting for demographic and socioeconomic factors.
+Assess whether spatial differences in hospital accessibility are associated with district-level mortality in Philadelphia, accounting for Social Determinants of Health (SDOH).
 
 **Method:**\
-I calculate district-level hospital accessibility using tract-population–weighted distances to the nearest hospital and link these metrics with annual mortality data (2013–2022). After describing temporal patterns, I fit regression models—from unadjusted to fully adjusted SDOH models—to evaluate whether hospital count and accessibility predict mortality. Diagnostic checks, VIF assessment, and sensitivity analyses are used to test robustness.
+This study investigates the structural association between hospital accessibility and district-level mortality across 18 planning districts in Philadelphia (2013–2022). The core predictor, Hospital Accessibility (Ai), was quantified using the Two-Step Floating Catchment Area (2SFCA) method based on a 15-minute driving threshold on the actual road network, integrating both proximity and demand competition. The analytical strategy proceeds in three phases: First, descriptive statistics and exploratory plots were used to examine the spatial and temporal structure of the dataset. Second, structural analysis was conducted using univariate and SDOH-corrected multivariate Cross-Sectional OLS models. Third, Two-Way Fixed Effects (FE) model and the Pooled OLS model augmented with Clustered Standard Errors (SE) and Time Fixed Effects (TFE) were used for dynamic validation.
 
 **Materials:**
 
@@ -16,7 +16,9 @@ I calculate district-level hospital accessibility using tract-population–weigh
 
 -   `Vital_Mortality_PD.csv`: district-level mortality
 
--   `Vital_Social_Determinants_PD.csv`: SDOH indicators
+-   `final_project_template.html` : Rendered form, easy to read
 
 **Expected Contribution:**\
-Provide an initial assessment of whether disparities in healthcare access relate to differences in mortality across Philadelphia districts, supporting evidence-based planning and health equity efforts.
+Provide an initial assessment of whether unequal spatial accessibility to hospitals and differences in mortality rates across Philadelphia districts. The findings are expected to serve as evidence to inform targeted policy interventions aimed at promoting Health Equity and population health in healthcare resource allocation.
+
+<https://github.com/Riddikulusu/BMIN503_Final_Project>
