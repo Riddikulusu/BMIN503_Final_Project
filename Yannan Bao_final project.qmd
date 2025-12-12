@@ -199,67 +199,7 @@ Further analyses will be conducted in the Results section.
 
 ## Results {#sec-results}
 
-### 1. Descriptive Statistics
-
-Descriptive analysis was performed to calculate the mean, standard deviation, minimum, maximum, and between- and within-variation for all variables. This helped determine the data structure and quantify the structural gap versus annual fluctuation.
-
-```{r}
-##Descriptive analysis 
-avg_mortality<- mortality|>
-  group_by(district)|>
-  summarise(avg_mortality=mean(mortality),
-            avg_Ai=mean(Ai),
-            avg_NH_Black=mean(NH_Black),
-            avg_Poverty=mean(Poverty),
-            avg_Unemployed=mean(Unemployed))
-
-vars <- c("mortality", "Ai","NH_Black", "Poverty","Unemployed") 
-
-stats <- function(full_data, avg_data, var_name) {
-  # OVERALL statistics (180):The total variation across all observations
-  overall_mean <- mean(full_data[[var_name]])
-  overall_sd <- sd(full_data[[var_name]])
-  overall_min <- min(full_data[[var_name]])
-  overall_max <- max(full_data[[var_name]])
-  
-  #BETWEEN statistics (18 districts)：The variation of the group (district) means
-  avg_var_name <- paste0("avg_", var_name)
-  between_mean <- mean(avg_data[[avg_var_name]])
-  between_sd <- sd(avg_data[[avg_var_name]])
-  between_min <- min(avg_data[[avg_var_name]])
-  between_max <- max(avg_data[[avg_var_name]])
-  
-  # WITHIN (10 years)
-  # The 'Within' component captures the variability over time (or within each group), after removing the group-level mean. It is derived from the variance decomposition.
-  # formula: Overall Variance = Between Variance + Within Variance
-  # Within Std. Dev. = sqrt(Overall Std. Dev.^2 - Between Std. Dev.^2)
-  within_sd_sq <- overall_sd^2 - between_sd^2
-  within_sd <- ifelse(within_sd_sq < 0, 0,sqrt(within_sd_sq)) #in case of negative values
-  
-  #dataframe construction
-  stats_results <- data.frame(
-    variable = var_name,
-    statistic = c("Overall", "Between", "Within"),
-    #Within Mean is set to 0 because within variation is defined as (x_it - x̄_i),whose mean is zero for each group by construction.
-    Mean = c(overall_mean, between_mean, 0.0), 
-    Sd = c(overall_sd, between_sd, within_sd),
-    # Min and Max for the 'Within' component are less informative for de-meaned data and are thus set to NA to avoid misinterpretation.
-    Min = c(overall_min, between_min, NA),
-    Max = c(overall_max, between_max, NA))
-  
-  return(stats_results)
-}
-
-descriptive_list <- lapply(vars, function(var) {
-  stats(mortality, avg_mortality, var)
-})
-
-final_descriptive <- bind_rows(descriptive_list)
-
-final_descriptive
-```
-
-### 2. Exploratory plots
+### 1. Exploratory plots
 
 Plots are generated for exploratory analysis: 1) Static tract-level accessibility map (10-year average); 2) Static district-level mortality map (10-year average); 3) Annual mortality rate line charts. The goal was to observe inter-area differences and temporal trends and see if "higher accessibility equals lower mortality."
 
@@ -333,6 +273,15 @@ map_Ai <- leaflet(acs_avg) |>
 map_Ai
 
 #2) Static district-level mortality map (10-year average)
+avg_mortality<- mortality|>
+  group_by(district)|>
+  summarise(avg_mortality=mean(mortality),
+            avg_Ai=mean(Ai),
+            avg_NH_Black=mean(NH_Black),
+            avg_Poverty=mean(Poverty),
+            avg_Unemployed=mean(Unemployed))
+
+#add district geometry to avg_mortality
 avg_mortality<-district|>
   rename(district=DIST_NAME)|>
   select(district)|>
@@ -371,6 +320,64 @@ line_mortality <- mortality |>
 
 line_mortality
 ```
+
+1)\~2)The comparison of the mortality and accessibility maps indicates that districts with high hospital accessibility do not align with low mortality rates. This complex spatial relationship suggests that factors other than hospital accessibility may be the primary drivers of mortality, potentially contradicting an initial hypothesis.
+
+3)The annual mortality rate line charts reveal substantial structural differences between districts. Additionally, all districts were simultaneously affected by significant temporal shocks (e.g., the sharp rise around 2020, likely attributable to COVID-19).
+
+### 2. Descriptive Statistics
+
+Descriptive analysis was performed to calculate the mean, standard deviation, minimum, maximum, and between- and within-variation for all variables. This helped determine the data structure and quantify the structural gap versus annual fluctuation.
+
+```{r}
+##Descriptive analysis 
+vars <- c("mortality", "Ai","NH_Black", "Poverty","Unemployed") 
+
+stats <- function(full_data, avg_data, var_name) {
+  # OVERALL statistics (180):The total variation across all observations
+  overall_mean <- mean(full_data[[var_name]])
+  overall_sd <- sd(full_data[[var_name]])
+  overall_min <- min(full_data[[var_name]])
+  overall_max <- max(full_data[[var_name]])
+  
+  #BETWEEN statistics (18 districts)：The variation of the group (district) means
+  avg_var_name <- paste0("avg_", var_name)
+  between_mean <- mean(avg_data[[avg_var_name]])
+  between_sd <- sd(avg_data[[avg_var_name]])
+  between_min <- min(avg_data[[avg_var_name]])
+  between_max <- max(avg_data[[avg_var_name]])
+  
+  # WITHIN (10 years)
+  # The 'Within' component captures the variability over time (or within each group), after removing the group-level mean. It is derived from the variance decomposition.
+  # formula: Overall Variance = Between Variance + Within Variance
+  # Within Std. Dev. = sqrt(Overall Std. Dev.^2 - Between Std. Dev.^2)
+  within_sd_sq <- overall_sd^2 - between_sd^2
+  within_sd <- ifelse(within_sd_sq < 0, 0,sqrt(within_sd_sq)) #in case of negative values
+  
+  #dataframe construction
+  stats_results <- data.frame(
+    variable = var_name,
+    statistic = c("Overall", "Between", "Within"),
+    #Within Mean is set to 0 because within variation is defined as (x_it - x̄_i),whose mean is zero for each group by construction.
+    Mean = c(overall_mean, between_mean, 0.0), 
+    Sd = c(overall_sd, between_sd, within_sd),
+    # Min and Max for the 'Within' component are less informative for de-meaned data and are thus set to NA to avoid misinterpretation.
+    Min = c(overall_min, between_min, NA),
+    Max = c(overall_max, between_max, NA))
+  
+  return(stats_results)
+}
+
+descriptive_list <- lapply(vars, function(var) {
+  stats(mortality, avg_mortality, var)
+})
+
+final_descriptive <- bind_rows(descriptive_list)
+
+final_descriptive
+```
+
+The Descriptive analysis indicates that Between-District variation is substantial, while Within-District variation is much smaller. This suggests that structural differences between districts are the primary drivers of the observed variance. Consequently, the modeling approach should prioritize the analysis of these structural, between-district differences, while also incorporating the effects of dynamic temporal shocks to get more accurate results.
 
 ### 3. Preliminary Structural Analysis (Cross-Sectional OLS)
 
