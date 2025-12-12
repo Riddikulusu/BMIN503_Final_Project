@@ -8,7 +8,7 @@ This study investigates the structural association between hospital accessibilit
 
 **Materials:**
 
--   `final_project_template.qmd`: analysis code
+-   `Yannan_Bao_final_project.qmd`: analysis code
 
 -   `DOH_Hospitals202311`: hospital locations (PA)
 
@@ -16,7 +16,7 @@ This study investigates the structural association between hospital accessibilit
 
 -   `Vital_Mortality_PD.csv`: district-level mortality
 
--   `final_project_template.html` : Rendered form, easy to read
+-   `Yannan_Bao_final_project.html` : Rendered form, easy to read
 
 **Expected Contribution:**\
 Provide an initial assessment of whether unequal spatial accessibility to hospitals and differences in mortality rates across Philadelphia districts. The findings are expected to serve as evidence to inform targeted policy interventions aimed at promoting Health Equity and population health in healthcare resource allocation.
